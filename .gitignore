@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+work/
+tmp/
+*.app/
+*.asar
+*.asar.unpacked/
+*.dmg
+*.zip
+*.tar.gz
+*.log
