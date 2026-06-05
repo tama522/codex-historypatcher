@@ -1,5 +1,9 @@
 # codex-historypatcher
 
+Use this when you want the Codex desktop app's left sidebar to show far more
+recent threads, for example stretching the default recent-thread window of
+around 25 items up to a configurable limit such as 350.
+
 Small macOS helper script for rebuilding a local `Codex-HistoryPatch.app`
 after the official Codex desktop app updates.
 
