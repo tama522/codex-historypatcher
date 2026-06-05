@@ -69,18 +69,6 @@ If repeated Removable Volumes dialogs continue, quit all
 `Codex-HistoryPatch.app` processes or reboot once. Old running processes can
 keep using the previous bundle identity until they exit.
 
-## Publishing This To GitHub
-
-Keep the repository source-only:
-
-- Do not commit `*.app`, `*.asar`, `app.asar.unpacked`, or copied Codex assets.
-- Do not include OpenAI app icons or bundled proprietary resources.
-- Keep the project name descriptive and avoid implying official affiliation.
-- Add your preferred license and copyright owner before publishing.
-
-This is an unofficial local patching helper. Review the license and terms for
-the software you patch before using or distributing automation around it.
-
 ## Troubleshooting
 
 Missing `asar` is usually fine. The script uses:
