@@ -141,6 +141,37 @@ patch_history_limits() {
     fail "Incremental recent conversation limit was not patched"
   rg -q "limit:${limit}\\*this\\.recentConversationPageCount,cursor:null" "$server_file" ||
     fail "Recent conversation refresh limit was not patched"
+
+  node - "$server_file" <<'NODE'
+const fs = require("fs");
+
+const file = process.argv[2];
+const source = fs.readFileSync(file, "utf8");
+const alreadyPatched =
+  /async listRecentThreads\(\{cursor:[A-Za-z_$][\w$]*,limit:[A-Za-z_$][\w$]*\}\)\{let n=\[\],r=/.test(source) &&
+  source.includes("Math.max(0,l-n.length)");
+
+if (alreadyPatched) {
+  process.exit(0);
+}
+
+const recentListPattern =
+  /listRecentThreads\(\{cursor:([A-Za-z_$][\w$]*),limit:([A-Za-z_$][\w$]*)\}\)\{return this\.params\.requestClient\.sendRequest\(`thread\/list`,\{limit:\2,cursor:\1,sortKey:this\.recentConversationSortKey,(?:modelProviders:null,)?archived:!1,sourceKinds:([A-Za-z_$][\w$]*)\}\)\}/;
+
+if (!recentListPattern.test(source)) {
+  console.error("Could not patch listRecentThreads pagination helper");
+  process.exit(1);
+}
+
+const patched = source.replace(recentListPattern, (_match, cursorVar, limitVar, sourceKindsVar) =>
+  `async listRecentThreads({cursor:${cursorVar},limit:${limitVar}}){let n=[],r=${cursorVar},i=null,a=null,o=0,l=${limitVar}??100;for(;;){let s=await this.params.requestClient.sendRequest(\`thread/list\`,{limit:Math.max(0,l-n.length),cursor:r,sortKey:this.recentConversationSortKey,modelProviders:null,archived:!1,sourceKinds:${sourceKindsVar}});a??=s.backwardsCursor??null,i=s.nextCursor??null;for(let e of s.data)n.push(e);if(i==null||i===r||s.data.length===0||n.length>=l||++o>=20)break;r=i}return{data:n,nextCursor:i,backwardsCursor:a}}`
+);
+
+fs.writeFileSync(file, patched);
+NODE
+
+  rg -q "Math.max\\(0,l-n\\.length\\)" "$server_file" ||
+    fail "Recent conversation pagination helper was not patched"
   node --check "$server_file" >/dev/null
   log "Patched recent thread loader: ${server_file#$extracted/}"
 

@@ -15,7 +15,8 @@ It only automates local patching against your own installed
 
 - Copies `/Applications/Codex.app` to a separate patched app.
 - Extracts `Contents/Resources/app.asar`.
-- Patches recent thread loading limits to a configurable value.
+- Patches recent thread loading limits to a configurable value and follows
+  app-server pagination when the app returns smaller pages.
 - Gives the copy a separate bundle id, by default `local.codex.historypatch`.
 - Rebuilds `app.asar`, updates the Electron ASAR integrity hash, and ad-hoc
   signs the copied app.
