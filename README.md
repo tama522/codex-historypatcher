@@ -17,12 +17,9 @@ It only automates local patching against your own installed
 - Extracts `Contents/Resources/app.asar`.
 - Patches recent thread loading limits to a configurable value and follows
   app-server pagination when the app returns smaller pages.
-- Avoids sidebar background probes for historical workspaces under
-  `/Volumes/...`, which can otherwise trigger repeated Removable Volumes
-  dialogs while browsing old threads.
-- Sanitizes removable-volume working directories in recent conversation
-  metadata and restored background-terminal metadata so periodic UI refreshes
-  do not keep probing old external-drive paths.
+- Can optionally hide `/Volumes/...` paths from sidebar/history background
+  probes with `--filter-removable-volume-history`. This is off by default so
+  external-drive projects remain visible and usable.
 - Gives the copy a separate bundle id, by default `local.codex.historypatch`.
 - Rebuilds `app.asar`, updates the Electron ASAR integrity hash, and ad-hoc
   signs the copied app.
@@ -130,16 +127,23 @@ the removable-volumes usage description is applied to nested `Info.plist`
 files too.
 
 The sidebar can also trigger dialogs while browsing older threads if many
-stored thread working directories point to `/Volumes/...`. The patcher filters
-those removable-volume paths out of sidebar background existence checks,
-workspace-group discovery, recent-conversation metadata, thread hover-card
-metadata, and restored background-terminal metadata.
+stored thread working directories point to `/Volumes/...`. By default, the
+patcher keeps those paths intact so external-drive projects remain visible.
 
 This matters because the app periodically refreshes sidebar state and local
 thread metadata. If old sessions contain external-drive `cwd` values, those
-refreshes can look like a Removable Volumes request every few seconds even
-when you are only browsing history. The patch keeps those old threads visible
-but treats their external-drive `cwd` as unavailable for background UI checks.
+refreshes can look like a Removable Volumes request every few seconds even when
+you are only browsing history.
+
+If you do not use external-drive projects and want to suppress those background
+history probes, re-run with:
+
+```sh
+./scripts/repatch-codex-history.sh --limit 350 --filter-removable-volume-history
+```
+
+Do not use `--filter-removable-volume-history` if you need projects under
+`/Volumes/...` to appear in the sidebar or workspace picker.
 
 Opening or resuming an individual thread whose active workspace is actually on
 an external drive can still require Removable Volumes access. In that case the
