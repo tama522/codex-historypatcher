@@ -11,6 +11,8 @@ APP_NAME="Codex-HistoryPatch"
 WORK_DIR="${TMPDIR:-/tmp}/codex-historypatcher"
 LAUNCH_AFTER="1"
 KEEP_WORK="0"
+REPAIR_MACOS_XATTRS="0"
+RESET_REMOVABLE_VOLUMES_TCC="0"
 
 usage() {
   cat <<'EOF'
@@ -26,6 +28,10 @@ Options:
   --work-dir PATH    Temporary working directory. Default: $TMPDIR/codex-historypatcher
   --no-launch        Do not launch the patched app after installation
   --keep-work        Keep extracted temporary files for inspection
+  --repair-macos-xattrs
+                    Remove provenance/quarantine xattrs from the copied target app
+  --reset-removable-volumes-tcc
+                    Reset Removable Volumes permission for the patched bundle id
   -h, --help         Show this help
 
 This script copies the installed Codex app, patches local history/thread-list
@@ -119,6 +125,32 @@ running_under_target_app() {
   return 1
 }
 
+repair_macos_xattrs() {
+  local app="$1"
+
+  command -v xattr >/dev/null 2>&1 || {
+    log "xattr not found; skipping macOS xattr repair"
+    return
+  }
+
+  log "Removing macOS provenance/quarantine xattrs from copied app"
+  xattr -dr com.apple.provenance "$app" 2>/dev/null || true
+  xattr -dr com.apple.quarantine "$app" 2>/dev/null || true
+}
+
+reset_removable_volumes_tcc() {
+  local bundle_id="$1"
+
+  command -v tccutil >/dev/null 2>&1 || {
+    log "tccutil not found; skipping Removable Volumes permission reset"
+    return
+  }
+
+  log "Resetting Removable Volumes permission for $bundle_id"
+  tccutil reset SystemPolicyRemovableVolumes "$bundle_id" 2>/dev/null ||
+    log "Could not reset Removable Volumes permission; reset it manually if dialogs continue"
+}
+
 patch_history_limits() {
   local extracted="$1"
   local limit="$2"
@@ -204,6 +236,7 @@ patch_bundle_identity() {
   plist_set_or_add_string "$main_plist" "CFBundleDisplayName" "$app_name"
   plist_set_or_add_string "$main_plist" "BundleSigningBaseName" "$app_name"
   plist_set_or_add_string "$main_plist" "CrProductDirName" "$bundle_id"
+  plist_set_or_add_string "$main_plist" "NSRemovableVolumesUsageDescription" "$app_name needs access to project files on removable volumes when you open projects stored on external drives."
   /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:0:CFBundleURLName $app_name" "$main_plist" 2>/dev/null || true
 
   local plist
@@ -276,6 +309,14 @@ while [[ $# -gt 0 ]]; do
       KEEP_WORK="1"
       shift
       ;;
+    --repair-macos-xattrs)
+      REPAIR_MACOS_XATTRS="1"
+      shift
+      ;;
+    --reset-removable-volumes-tcc)
+      RESET_REMOVABLE_VOLUMES_TCC="1"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -324,6 +365,10 @@ mkdir -p "$STAGE_ROOT"
 log "Copying source app"
 ditto "$SOURCE_APP" "$STAGE_APP"
 
+if [[ "$REPAIR_MACOS_XATTRS" == "1" ]]; then
+  repair_macos_xattrs "$STAGE_APP"
+fi
+
 log "Extracting app.asar"
 npx --yes @electron/asar extract "$STAGE_APP/Contents/Resources/app.asar" "$EXTRACT_DIR"
 
@@ -345,6 +390,10 @@ log "Installing patched app"
 rm -rf "$TARGET_APP"
 ditto "$STAGE_APP" "$TARGET_APP"
 
+if [[ "$REPAIR_MACOS_XATTRS" == "1" ]]; then
+  repair_macos_xattrs "$TARGET_APP"
+fi
+
 codesign --verify --deep --strict "$TARGET_APP"
 
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
@@ -354,6 +403,10 @@ fi
 
 log "Installed $TARGET_APP"
 log "Installed bundle id: $(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$TARGET_APP/Contents/Info.plist")"
+
+if [[ "$RESET_REMOVABLE_VOLUMES_TCC" == "1" ]]; then
+  reset_removable_volumes_tcc "$BUNDLE_ID"
+fi
 
 if [[ "$KEEP_WORK" != "1" ]]; then
   rm -rf "$STAGE_ROOT"
