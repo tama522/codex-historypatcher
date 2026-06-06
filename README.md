@@ -17,6 +17,9 @@ It only automates local patching against your own installed
 - Extracts `Contents/Resources/app.asar`.
 - Patches recent thread loading limits to a configurable value and follows
   app-server pagination when the app returns smaller pages.
+- Avoids sidebar background probes for historical workspaces under
+  `/Volumes/...`, which can otherwise trigger repeated Removable Volumes
+  dialogs while browsing old threads.
 - Gives the copy a separate bundle id, by default `local.codex.historypatch`.
 - Rebuilds `app.asar`, updates the Electron ASAR integrity hash, and ad-hoc
   signs the copied app.
@@ -122,6 +125,12 @@ That usually means a helper, plugin, or resource bundle inside the copied app
 is the process that touched the removable volume. Re-run the latest patcher so
 the removable-volumes usage description is applied to nested `Info.plist`
 files too.
+
+The sidebar can also trigger dialogs while browsing older threads if many
+stored thread working directories point to `/Volumes/...`. The patcher filters
+those removable-volume paths out of sidebar background existence checks and
+workspace-group discovery. Opening or resuming an individual thread whose
+workspace is actually on an external drive can still require access.
 
 ### Optional Privacy Repairs
 
