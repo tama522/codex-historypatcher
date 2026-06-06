@@ -68,8 +68,9 @@ Codex app. This keeps Full Disk Access and Removable Volumes permissions from
 overwriting the official app's settings.
 
 The script also adds `NSRemovableVolumesUsageDescription` to the patched app's
-`Info.plist`. This does not grant access by itself. It only gives macOS a clear
-reason string to show if the patched app asks for Removable Volumes access.
+`Info.plist` files, including nested helper apps and bundles. This does not
+grant access by itself. It only gives macOS a clear reason string to show if
+the patched app or one of its helpers asks for Removable Volumes access.
 
 After the first run, open:
 
@@ -115,6 +116,13 @@ patched build as a different code identity after `app.asar` or `Info.plist`
 changes. In that case, allowing access once for the old patched build may not
 fully apply to the next patched build.
 
+The dialog can appear under slightly different names, such as
+`Codex-HistoryPatch`, `Codex-HistoryPatch.app.bundle`, or a nested helper app.
+That usually means a helper, plugin, or resource bundle inside the copied app
+is the process that touched the removable volume. Re-run the latest patcher so
+the removable-volumes usage description is applied to nested `Info.plist`
+files too.
+
 ### Optional Privacy Repairs
 
 The default script avoids changing privacy state beyond adding the removable
@@ -148,6 +156,13 @@ tccutil reset SystemPolicyRemovableVolumes local.codex.historypatch
 
 It clears the saved Removable Volumes decision for the patched bundle id, so
 macOS can ask again cleanly the next time the patched app needs that access.
+
+For repeated dialogs after upgrading from an older patcher version, re-apply
+the latest script and reset the patched app's Removable Volumes decision once:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tama522/codex-historypatcher/main/scripts/repatch-codex-history.sh | zsh -s -- --limit 350 --repair-macos-xattrs --reset-removable-volumes-tcc
+```
 
 ## Troubleshooting
 
