@@ -20,6 +20,9 @@ It only automates local patching against your own installed
 - Avoids sidebar background probes for historical workspaces under
   `/Volumes/...`, which can otherwise trigger repeated Removable Volumes
   dialogs while browsing old threads.
+- Sanitizes removable-volume working directories in recent conversation
+  metadata and restored background-terminal metadata so periodic UI refreshes
+  do not keep probing old external-drive paths.
 - Gives the copy a separate bundle id, by default `local.codex.historypatch`.
 - Rebuilds `app.asar`, updates the Electron ASAR integrity hash, and ad-hoc
   signs the copied app.
@@ -128,9 +131,20 @@ files too.
 
 The sidebar can also trigger dialogs while browsing older threads if many
 stored thread working directories point to `/Volumes/...`. The patcher filters
-those removable-volume paths out of sidebar background existence checks and
-workspace-group discovery. Opening or resuming an individual thread whose
-workspace is actually on an external drive can still require access.
+those removable-volume paths out of sidebar background existence checks,
+workspace-group discovery, recent-conversation metadata, thread hover-card
+metadata, and restored background-terminal metadata.
+
+This matters because the app periodically refreshes sidebar state and local
+thread metadata. If old sessions contain external-drive `cwd` values, those
+refreshes can look like a Removable Volumes request every few seconds even
+when you are only browsing history. The patch keeps those old threads visible
+but treats their external-drive `cwd` as unavailable for background UI checks.
+
+Opening or resuming an individual thread whose active workspace is actually on
+an external drive can still require Removable Volumes access. In that case the
+permission prompt is expected, because the app really needs to read the project
+files on that drive.
 
 ### Optional Privacy Repairs
 
@@ -172,6 +186,10 @@ the latest script and reset the patched app's Removable Volumes decision once:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/tama522/codex-historypatcher/main/scripts/repatch-codex-history.sh | zsh -s -- --limit 350 --repair-macos-xattrs --reset-removable-volumes-tcc
 ```
+
+Run that command from Terminal, the official Codex app, or another host. Do
+not run it from inside `Codex-HistoryPatch.app`, because the patcher must stop
+and replace the target app.
 
 ## Troubleshooting
 
