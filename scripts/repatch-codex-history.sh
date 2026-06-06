@@ -243,6 +243,9 @@ NODE
 patch_removable_volume_probes() {
   local extracted="$1"
   local sidebar_project_file=""
+  local server_file=""
+  local sidebar_thread_file=""
+  local background_terminals_file=""
   local file
 
   for file in "$extracted"/webview/assets/sidebar-project-group-signals-*.js; do
@@ -313,6 +316,167 @@ NODE
     fail "Removable volume probe patch was not applied"
   node --check "$sidebar_project_file" >/dev/null
   log "Patched removable volume sidebar probes: ${sidebar_project_file#$extracted/}"
+
+  for file in "$extracted"/webview/assets/app-server-manager-signals-*.js; do
+    if rg -q 'applyRecentConversations' "$file" &&
+       rg -q 'applyConversationState' "$file"; then
+      server_file="$file"
+      break
+    fi
+  done
+
+  if [[ -n "$server_file" ]]; then
+    node - "$server_file" <<'NODE'
+const fs = require("fs");
+
+const file = process.argv[2];
+let source = fs.readFileSync(file, "utf8");
+let changed = false;
+
+function replaceLiteral(search, replacement, label) {
+  if (source.includes(search)) {
+    source = source.split(search).join(replacement);
+    changed = true;
+    return;
+  }
+  if (!source.includes("CodexHistoryPatchSanitizeConversation")) {
+    console.warn(`Could not patch removable volume conversation metadata: ${label}`);
+  }
+}
+
+if (!source.includes("CodexHistoryPatchSanitizeConversation")) {
+  const marker = "}var Ni=class{conversations=new Map;";
+  const helper =
+    "}function CodexHistoryPatchIsRemovableVolumePath(e){return typeof e==`string`&&e.startsWith(`/Volumes/`)}" +
+    "function CodexHistoryPatchSanitizeTurn(e){if(e==null||typeof e!=`object`||!Array.isArray(e.items))return e;let t=!1,n=e.items.map(e=>e!=null&&typeof e==`object`&&CodexHistoryPatchIsRemovableVolumePath(e.cwd)?(t=!0,{...e,cwd:null}):e);return t?{...e,items:n}:e}" +
+    "function CodexHistoryPatchSanitizeConversation(e){if(e==null||typeof e!=`object`)return e;let t=e,n=!1;if(CodexHistoryPatchIsRemovableVolumePath(e.cwd)){t={...t,cwd:null,workspaceKind:e.workspaceKind??`projectless`};n=!0}if(Array.isArray(t.turns)){let e=!1,r=t.turns.map(t=>{let n=CodexHistoryPatchSanitizeTurn(t);return n!==t&&(e=!0),n});e&&(t={...t,turns:r},n=!0)}return n?t:e}var Ni=class{conversations=new Map;";
+  if (!source.includes(marker)) {
+    console.error("Could not insert removable volume conversation sanitizer");
+    process.exit(1);
+  }
+  source = source.replace(marker, helper);
+  changed = true;
+}
+
+replaceLiteral(
+  "getConversationCwd(e){return this.getConversation(e)?.cwd??null}",
+  "getConversationCwd(e){let t=this.getConversation(e)?.cwd??null;return CodexHistoryPatchIsRemovableVolumePath(t)?null:t}",
+  "getConversationCwd"
+);
+
+replaceLiteral(
+  "applyRecentConversations(e,t=!0){this.recentConversationsLoaded=t,this.recentConversations=e;",
+  "applyRecentConversations(e,t=!0){e=e.map(CodexHistoryPatchSanitizeConversation),this.recentConversationsLoaded=t,this.recentConversations=e;",
+  "applyRecentConversations"
+);
+
+replaceLiteral(
+  "applyConversationState(e,t){if((this.conversations.get(e)??null)!==t){",
+  "applyConversationState(e,t){t=CodexHistoryPatchSanitizeConversation(t);if((this.conversations.get(e)??null)!==t){",
+  "applyConversationState"
+);
+
+if (changed) {
+  fs.writeFileSync(file, source);
+}
+NODE
+
+    rg -q 'CodexHistoryPatchSanitizeConversation' "$server_file" ||
+      fail "Removable volume conversation metadata patch was not applied"
+    node --check "$server_file" >/dev/null
+    log "Patched removable volume conversation metadata: ${server_file#$extracted/}"
+  else
+    log "No app-server manager bundle found; skipping removable volume conversation metadata patch"
+  fi
+
+  for file in "$extracted"/webview/assets/sidebar-thread-list-signals-*.js; do
+    if rg -q 'THREAD_WORKSPACE_ROOT_HINTS' "$file" &&
+       rg -q 'conversation.cwd' "$file"; then
+      sidebar_thread_file="$file"
+      break
+    fi
+  done
+
+  if [[ -n "$sidebar_thread_file" ]]; then
+    node - "$sidebar_thread_file" <<'NODE'
+const fs = require("fs");
+
+const file = process.argv[2];
+let source = fs.readFileSync(file, "utf8");
+const search = "G=m(g,(t,{get:r})=>{let i=r(S,t);return i?.kind===`local`?n({cwd:i.conversation.cwd??null,assignment:s(r,e.THREAD_PROJECT_ASSIGNMENTS)?.[i.conversation.id]}):null})";
+const replacement = "G=m(g,(t,{get:r})=>{let i=r(S,t);if(i?.kind!==`local`)return null;let a=i.conversation.cwd??null;return n({cwd:typeof a==`string`&&a.startsWith(`/Volumes/`)?null:a,assignment:s(r,e.THREAD_PROJECT_ASSIGNMENTS)?.[i.conversation.id]})})";
+
+if (source.includes(search)) {
+  source = source.split(search).join(replacement);
+  fs.writeFileSync(file, source);
+} else if (!source.includes("startsWith(`/Volumes/`)?null")) {
+  console.warn("Could not patch sidebar thread cwd metadata");
+}
+NODE
+
+    rg -q 'startsWith\(`/Volumes/`\)\?null' "$sidebar_thread_file" ||
+      fail "Sidebar thread cwd metadata patch was not applied"
+    node --check "$sidebar_thread_file" >/dev/null
+    log "Patched removable volume sidebar thread metadata: ${sidebar_thread_file#$extracted/}"
+  else
+    log "No sidebar thread-list bundle found; skipping removable volume thread metadata patch"
+  fi
+
+  for file in "$extracted"/webview/assets/local-conversation-background-terminals-model-*.js; do
+    if rg -q 'restored-process' "$file" &&
+       rg -q 'commandExecution' "$file"; then
+      background_terminals_file="$file"
+      break
+    fi
+  done
+
+  if [[ -n "$background_terminals_file" ]]; then
+    node - "$background_terminals_file" <<'NODE'
+const fs = require("fs");
+
+const file = process.argv[2];
+let source = fs.readFileSync(file, "utf8");
+let changed = false;
+
+function replaceLiteral(search, replacement, label) {
+  if (source.includes(search)) {
+    source = source.split(search).join(replacement);
+    changed = true;
+    return;
+  }
+  if (!source.includes("CodexHistoryPatchCleanCwd")) {
+    console.warn(`Could not patch background terminal cwd: ${label}`);
+  }
+}
+
+if (!source.includes("CodexHistoryPatchCleanCwd")) {
+  const marker = "function R(e){let t=[];";
+  const helper = "function CodexHistoryPatchCleanCwd(e){return typeof e==`string`&&e.startsWith(`/Volumes/`)?null:e}function R(e){let t=[];";
+  if (!source.includes(marker)) {
+    console.error("Could not insert background terminal cwd sanitizer");
+    process.exit(1);
+  }
+  source = source.replace(marker, helper);
+  changed = true;
+}
+
+replaceLiteral("cwd:e.cwd??n.cwd", "cwd:CodexHistoryPatchCleanCwd(e.cwd??n.cwd)", "active/restored command cwd");
+replaceLiteral("cwd:e.cwd??t?.cwd??null", "cwd:CodexHistoryPatchCleanCwd(e.cwd??t?.cwd??null)", "restored process cwd");
+replaceLiteral("cwd:e.cwd??t.cwd", "cwd:CodexHistoryPatchCleanCwd(e.cwd??t.cwd)", "merged process cwd");
+replaceLiteral("cwd:e.cwd??null", "cwd:CodexHistoryPatchCleanCwd(e.cwd??null)", "interrupted command cwd");
+
+if (changed) {
+  fs.writeFileSync(file, source);
+}
+NODE
+
+    rg -q 'CodexHistoryPatchCleanCwd' "$background_terminals_file" ||
+      fail "Background terminal cwd patch was not applied"
+    node --check "$background_terminals_file" >/dev/null
+    log "Patched removable volume background terminal metadata: ${background_terminals_file#$extracted/}"
+  else
+    log "No background terminal bundle found; skipping removable volume command cwd patch"
+  fi
 }
 
 patch_bundle_identity() {
