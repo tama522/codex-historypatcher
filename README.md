@@ -44,11 +44,32 @@ Skip launch:
 ./scripts/repatch-codex-history.sh --limit 350 --no-launch
 ```
 
+Download and run the latest script directly from GitHub:
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/tama522/codex-historypatcher/main/scripts/repatch-codex-history.sh \
+  -o /tmp/repatch-codex-history.sh
+chmod +x /tmp/repatch-codex-history.sh
+/tmp/repatch-codex-history.sh --limit 350
+```
+
+If you are comfortable piping a remote script directly into a shell, this is
+the shortest form:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tama522/codex-historypatcher/main/scripts/repatch-codex-history.sh | zsh -s -- --limit 350
+```
+
 ## macOS Privacy Notes
 
 The patched app intentionally uses a different bundle id from the official
 Codex app. This keeps Full Disk Access and Removable Volumes permissions from
 overwriting the official app's settings.
+
+The script also adds `NSRemovableVolumesUsageDescription` to the patched app's
+`Info.plist`. This does not grant access by itself. It only gives macOS a clear
+reason string to show if the patched app asks for Removable Volumes access.
 
 After the first run, open:
 
@@ -70,9 +91,63 @@ Privacy & Security -> Files and Folders -> Removable Volumes
 
 enable it there too.
 
-If repeated Removable Volumes dialogs continue, quit all
-`Codex-HistoryPatch.app` processes or reboot once. Old running processes can
-keep using the previous bundle identity until they exit.
+### When Removable Volumes Access Is Needed
+
+macOS may ask for Removable Volumes access when the patched app touches files
+on an external SSD, USB drive, SD card, mounted disk image, or another path
+under `/Volumes`.
+
+This is most likely when:
+
+- your project folder is stored on an external drive;
+- a Codex workspace, output, or temporary file points to `/Volumes/...`;
+- you open or resume a thread whose working directory was on a removable
+  volume;
+- the app checks file metadata on a removable volume without the access being
+  granted through Finder, drag and drop, or an Open/Save panel first.
+
+If repeated Removable Volumes dialogs continue after you allow access, first
+quit all `Codex-HistoryPatch.app` processes or reboot once. Old running
+processes can keep using the previous bundle identity until they exit.
+
+Because this patcher ad-hoc signs the copied app, macOS can also treat a newly
+patched build as a different code identity after `app.asar` or `Info.plist`
+changes. In that case, allowing access once for the old patched build may not
+fully apply to the next patched build.
+
+### Optional Privacy Repairs
+
+The default script avoids changing privacy state beyond adding the removable
+volumes usage description. The following options are intentionally opt-in.
+
+Use `--repair-macos-xattrs` if macOS keeps showing provenance, quarantine, or
+Gatekeeper-related warnings for the copied patched app, or if system logs show
+messages such as `Unable to apply provenance sandbox` for
+`Codex-HistoryPatch.app`:
+
+```sh
+./scripts/repatch-codex-history.sh --limit 350 --repair-macos-xattrs
+```
+
+This removes only `com.apple.provenance` and `com.apple.quarantine` extended
+attributes from the copied patched app. It does not modify the official
+`/Applications/Codex.app`.
+
+Use `--reset-removable-volumes-tcc` only when Removable Volumes prompts keep
+reappearing after you have quit the app and allowed the permission once:
+
+```sh
+./scripts/repatch-codex-history.sh --limit 350 --reset-removable-volumes-tcc
+```
+
+This runs:
+
+```sh
+tccutil reset SystemPolicyRemovableVolumes local.codex.historypatch
+```
+
+It clears the saved Removable Volumes decision for the patched bundle id, so
+macOS can ask again cleanly the next time the patched app needs that access.
 
 ## Troubleshooting
 
