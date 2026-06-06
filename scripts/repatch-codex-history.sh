@@ -240,6 +240,81 @@ NODE
   fi
 }
 
+patch_removable_volume_probes() {
+  local extracted="$1"
+  local sidebar_project_file=""
+  local file
+
+  for file in "$extracted"/webview/assets/sidebar-project-group-signals-*.js; do
+    if rg -q '`paths-exist`' "$file"; then
+      sidebar_project_file="$file"
+      break
+    fi
+  done
+
+  if [[ -z "$sidebar_project_file" ]]; then
+    log "No sidebar project-group bundle found; skipping removable volume probe patch"
+    return
+  fi
+
+  node - "$sidebar_project_file" <<'NODE'
+const fs = require("fs");
+
+const file = process.argv[2];
+let source = fs.readFileSync(file, "utf8");
+let changed = false;
+
+function replacePattern(pattern, replacement, label) {
+  if (pattern.test(source)) {
+    source = source.replace(pattern, () => replacement);
+    changed = true;
+    return;
+  }
+  if (!source.includes("startsWith(`/Volumes/`)")) {
+    console.warn(`Could not patch removable volume probe: ${label}`);
+  }
+}
+
+function replaceLiteral(search, replacement, label) {
+  if (source.includes(search)) {
+    source = source.split(search).join(replacement);
+    changed = true;
+    return;
+  }
+  if (!source.includes("startsWith(`/Volumes/`)")) {
+    console.warn(`Could not patch removable volume probe: ${label}`);
+  }
+}
+
+replacePattern(
+  /\$e=oe\(M,`paths-exist`,e=>\(\{enabled:e\.length>0,params:\{hostId:l,paths:e\},staleTime:N\.FIVE_SECONDS\}\)\)/,
+  "$e=oe(M,`paths-exist`,e=>{let t=e.filter(e=>typeof e!=`string`||!e.startsWith(`/Volumes/`));return{enabled:t.length>0,params:{hostId:l,paths:t},staleTime:N.FIVE_SECONDS}})",
+  "paths-exist"
+);
+
+replaceLiteral(
+  "dirs:z([],t,e(F).data?.roots,[]).find(({hostId:e})=>e===t)?.dirs??Xe",
+  "dirs:(z([],t,e(F).data?.roots,[]).find(({hostId:e})=>e===t)?.dirs??Xe).filter(e=>typeof e!=`string`||!e.startsWith(`/Volumes/`))",
+  "workspace group dirs"
+);
+
+replaceLiteral(
+  "params:{hostId:e,dirs:t}",
+  "params:{hostId:e,dirs:t.filter(e=>typeof e!=`string`||!e.startsWith(`/Volumes/`))}",
+  "workspace task dirs"
+);
+
+if (changed) {
+  fs.writeFileSync(file, source);
+}
+NODE
+
+  rg -q 'startsWith\(`/Volumes/`\)' "$sidebar_project_file" ||
+    fail "Removable volume probe patch was not applied"
+  node --check "$sidebar_project_file" >/dev/null
+  log "Patched removable volume sidebar probes: ${sidebar_project_file#$extracted/}"
+}
+
 patch_bundle_identity() {
   local app="$1"
   local bundle_id="$2"
@@ -388,6 +463,7 @@ log "Extracting app.asar"
 npx --yes @electron/asar extract "$STAGE_APP/Contents/Resources/app.asar" "$EXTRACT_DIR"
 
 patch_history_limits "$EXTRACT_DIR" "$LIMIT"
+patch_removable_volume_probes "$EXTRACT_DIR"
 
 log "Repacking app.asar"
 npx --yes @electron/asar pack "$EXTRACT_DIR" "$STAGE_APP/Contents/Resources/app.asar"
