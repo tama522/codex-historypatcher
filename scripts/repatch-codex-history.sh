@@ -13,6 +13,7 @@ LAUNCH_AFTER="1"
 KEEP_WORK="0"
 REPAIR_MACOS_XATTRS="0"
 RESET_REMOVABLE_VOLUMES_TCC="0"
+FILTER_REMOVABLE_VOLUME_HISTORY="0"
 
 usage() {
   cat <<'EOF'
@@ -32,6 +33,9 @@ Options:
                     Remove provenance/quarantine xattrs from the copied target app
   --reset-removable-volumes-tcc
                     Reset Removable Volumes permission for the patched bundle id
+  --filter-removable-volume-history
+                    Hide /Volumes paths from background sidebar/history probes.
+                    Use only if you do not need external-drive projects visible.
   -h, --help         Show this help
 
 This script copies the installed Codex app, patches local history/thread-list
@@ -571,6 +575,10 @@ while [[ $# -gt 0 ]]; do
       RESET_REMOVABLE_VOLUMES_TCC="1"
       shift
       ;;
+    --filter-removable-volume-history)
+      FILTER_REMOVABLE_VOLUME_HISTORY="1"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -627,7 +635,11 @@ log "Extracting app.asar"
 npx --yes @electron/asar extract "$STAGE_APP/Contents/Resources/app.asar" "$EXTRACT_DIR"
 
 patch_history_limits "$EXTRACT_DIR" "$LIMIT"
-patch_removable_volume_probes "$EXTRACT_DIR"
+if [[ "$FILTER_REMOVABLE_VOLUME_HISTORY" == "1" ]]; then
+  patch_removable_volume_probes "$EXTRACT_DIR"
+else
+  log "Skipping removable volume history filters so external-drive projects remain visible"
+fi
 
 log "Repacking app.asar"
 npx --yes @electron/asar pack "$EXTRACT_DIR" "$STAGE_APP/Contents/Resources/app.asar"
