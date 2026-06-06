@@ -151,6 +151,21 @@ reset_removable_volumes_tcc() {
     log "Could not reset Removable Volumes permission; reset it manually if dialogs continue"
 }
 
+add_removable_volumes_usage_descriptions() {
+  local app="$1"
+  local app_name="$2"
+  local usage="$app_name needs access to project files on removable volumes when you open projects stored on external drives."
+  local plist
+  local count=0
+
+  while IFS= read -r -d '' plist; do
+    plist_set_or_add_string "$plist" "NSRemovableVolumesUsageDescription" "$usage"
+    count=$((count + 1))
+  done < <(find "$app/Contents" -type f -name Info.plist -print0)
+
+  log "Added Removable Volumes usage descriptions to $count Info.plist files"
+}
+
 patch_history_limits() {
   local extracted="$1"
   local limit="$2"
@@ -236,7 +251,7 @@ patch_bundle_identity() {
   plist_set_or_add_string "$main_plist" "CFBundleDisplayName" "$app_name"
   plist_set_or_add_string "$main_plist" "BundleSigningBaseName" "$app_name"
   plist_set_or_add_string "$main_plist" "CrProductDirName" "$bundle_id"
-  plist_set_or_add_string "$main_plist" "NSRemovableVolumesUsageDescription" "$app_name needs access to project files on removable volumes when you open projects stored on external drives."
+  add_removable_volumes_usage_descriptions "$app" "$app_name"
   /usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:0:CFBundleURLName $app_name" "$main_plist" 2>/dev/null || true
 
   local plist
